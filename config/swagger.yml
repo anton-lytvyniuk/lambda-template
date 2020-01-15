@@ -1,0 +1,55 @@
+swagger: '2.0'
+info:
+  description: This is a template of Serverless Express Application/API powered by API Gateway and Lambda, which have to used for creating any other APIs.
+  version: 1.0.0
+  title:
+    Fn::Sub: API Template ${ApiServiceVersion} ${ApiStageName}
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+
+tags:
+- name: api-template
+  description: Set of sample requests in API template
+
+paths:
+  /v1/httpbin:
+    get:
+      tags: 
+        - api-template
+      summary: Example of GET request
+      description: This endpoint send GET request to httpbin.org
+      responses:
+        200:
+          description: Success
+        400:
+          description: Bad request
+          schema:
+            $ref: '#/definitions/ErrorDetailsModel'
+        405:
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/ErrorDetailsModel'
+      x-amazon-apigateway-integration:
+        httpMethod: POST
+        type: aws_proxy
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+
+definitions: 
+  ErrorDetailsModel:
+    type: object
+    description: The objects  usually represent distinct, related errors that occurred during the request.
+    required:
+      - code
+      - message
+    properties:
+      code:
+        type: string
+        description: One of a server-defined set of error codes. This is not the HTTP error code, but an application one
+      message:
+        type: string
+        description: A human-readable representation of the error. This should be loggable.

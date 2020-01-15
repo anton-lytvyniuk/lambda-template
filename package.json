@@ -1,0 +1,43 @@
+{
+  "name": "lambda-template",
+  "version": "1.0.0",
+  "description": "The template of lambda function with apigateway based on aws-serverless-express ",
+  "main": "src/lambda.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint . --quiet"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anton-lytvyniuk/lambda-template.git"
+  },
+  "keywords": [
+    "Lambda",
+    "Template",
+    "Scratch"
+  ],
+  "author": "Lytvyniuk Anton",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/anton-lytvyniuk/lambda-template/issues"
+  },
+  "homepage": "https://github.com/anton-lytvyniuk/lambda-template#readme",
+  "devDependencies": {
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb-base": "^14.0.0",
+    "eslint-plugin-import": "^2.20.0",
+    "husky": "^4.0.9"
+  },
+  "dependencies": {
+    "aws-serverless-express": "^3.3.6",
+    "express": "^4.17.1",
+    "fast-safe-stringify": "^2.0.7",
+    "http-status-codes": "^1.4.0",
+    "uuid": "^3.3.3"
+  },
+  "husky": {
+    "hooks": {
+      "pre-push": "npm run lint && npm run test"
+    }
+  }
+}

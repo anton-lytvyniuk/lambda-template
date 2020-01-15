@@ -1,0 +1,259 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless Express Application/API powered by API Gateway and Lambda
+Parameters:
+  # Common parameters
+  ServiceName:
+    Description: The Service name which used in construction other CloudFormation object
+    Type: String
+  DomainName:
+    Description: The super domain name for all apis
+    Type: String
+    ConstraintDescription: Must be valid domain name
+
+  # Lambda parameters
+  LambdaRuntime:
+    Description: The runtime of Lambda Function
+    Type: String
+    Default: nodejs12.x
+  LambdaMemorySize:
+    Description: The memoty size of Lambda Function
+    Type: Number
+    Default: 128
+  LambdaTimeout:
+    Description: The timeout of Lambda Function
+    Type: Number
+    Default: 30
+  LambdaPublishAlias:
+    Description: The publish alias of Lambda Function
+    Type: String
+    Default: LIVE
+
+  # API Gateway parameters
+  ApiStageName:
+    Description: The stage name of API Gateway
+    Type: String
+    ConstraintDescription: Only stages dev/*, preprod, prod are allowed
+  ApiServiceVersion:
+    Description: The version of API Service
+    Type: String
+
+  # Route 53 config parameters
+  TargetDomainName:
+    Description: The a target domain name of the regional api
+    Type: String
+    ConstraintDescription: Must be valid target domain name
+  HostedZoneId:
+    Description: The hosted zone id
+    Type: String
+    ConstraintDescription: Must be valid hosted zone id
+  CertificateArn:
+    Description: The Certificate Arn-name for particular region
+    Type: String
+    ConstraintDescription: Must be valid Certificate Arn-name for particular region
+
+  # CI/CD related parameters
+  ServiceArtifactGitCommitSHA:
+    Description: SHA of the git commit for the particular artifact
+    Type: String
+
+  # Resource tag parameters
+  Owner:
+    Description: The email or DL address of the resources owner
+    Type: String
+  Project:
+    Description: The project the resource supports
+    Type: String
+    ConstraintDescription: Must be valid JIRA keyspace
+
+# Condition to check if R53 Health-check have to be created
+Conditions:
+  HealthCheckCreation:
+    !Or [!Equals [ !Ref ApiStageName, preprod ], !Equals [ !Ref ApiStageName, prod ]]
+  MultiDev:
+    !Not [!Or [!Equals [ !Ref ApiStageName, preprod ], !Equals [ !Ref ApiStageName, prod ]]]
+
+Resources:
+
+  # Creation of API Gateway object based on swagger.yaml
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      DefinitionBody:
+        'Fn::Transform':
+          Name: 'AWS::Include'
+          Parameters:
+            Location: ../config/swagger.yaml
+      StageName: !Ref ApiStageName
+      EndpointConfiguration: REGIONAL
+      MethodSettings:
+        - ResourcePath: /*
+          HttpMethod: '*'
+          DataTraceEnabled: 'false'
+          LoggingLevel: 'ERROR'
+          MetricsEnabled: 'true'
+
+  # Creation of Lambda function
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${ServiceName}_${ApiServiceVersion}_${ApiStageName}
+      Handler: src/lambda.handler
+      Runtime: !Ref LambdaRuntime
+      CodeUri: ../
+      MemorySize: !Ref LambdaMemorySize
+      Timeout: !Ref LambdaTimeout
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Tags:
+        Name: !Sub ${ServiceName}_${ApiServiceVersion}_${ApiStageName}
+        Service: Application
+        Environment: !If [MultiDev, "dev", !Sub "${ApiStageName}"]
+        Owner: !Ref Owner
+        Project: !Ref Project
+        Product: API
+        AWS.Resource: Lambda
+
+  # Creation of Lambda Execution Role to grant appropriate permissions to Lambda function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
+      - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+      - PolicyName: api-secrete-access
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Resource:
+              !If [MultiDev, !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/dev/${ServiceName}/${ApiServiceVersion}-??????", !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ApiStageName}/${ServiceName}/${ApiServiceVersion}-??????"]
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+
+  # Creation of Lambda Execution Permission to allow API Gateway to call Lambda function
+  LambdaExecutionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*
+
+  # Creation of Cloudwatch Log Group for Lambda
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaFunction}
+      RetentionInDays: 7
+
+  # Creation of Cloudwatch Log Group for API Gateway Execution logs
+  ApiGatewayExecutionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub API-Gateway-Execution-Logs_${ApiGateway}/${ApiStageName}
+      RetentionInDays: 7
+
+  # Creation of Cloudwatch Log Group for API Gateway Access logs
+  ApiGatewayAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub API-Gateway-Access-Logs_${ApiGateway}/${ApiStageName}
+      RetentionInDays: 7
+
+  # Creation of Route53 Record
+  Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId:
+        Ref: HostedZoneId
+      Name:
+        Ref: ApiCustomDomainName
+      Type: CNAME
+      TTL: '60'
+      HealthCheckId:
+        !If [HealthCheckCreation, !Ref HealthcheckRegion, !Ref "AWS::NoValue"]
+      ResourceRecords:
+      - !Ref TargetDomainName
+      Region:
+        Ref: AWS::Region
+      SetIdentifier:
+        Fn::Join:
+        - "-"
+        - - api-gateway
+          - Ref: AWS::Region
+
+  # Creation of Route53 HealthCheck to introduce failover approach
+  HealthcheckRegion:
+    Type: AWS::Route53::HealthCheck
+    Condition: HealthCheckCreation
+    DependsOn:
+      - LambdaLogGroup
+      - ApiGatewayExecutionLogGroup
+      - ApiGatewayAccessLogGroup
+    Properties:
+      HealthCheckConfig:
+        Port: 443
+        Type: HTTPS
+        ResourcePath: !Sub "/${ApiStageName}/${ApiServiceVersion}/${ApiHealthCheckPath}"
+        FullyQualifiedDomainName: !Sub '${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com'
+        RequestInterval: 30
+        FailureThreshold: 3
+        Regions:
+          - eu-west-1
+          - us-east-1
+          - ap-southeast-1
+      HealthCheckTags:
+        - Key: 'Name'
+          Value: !Sub '${ApiCustomDomainName}:${AWS::Region}'
+        - Key: 'Service'
+          Value: 'Application'
+        - Key: 'Environment'
+          Value: !If [MultiDev, "dev", !Sub "${ApiStageName}"]
+        - Key: 'Owner'
+          Value: !Ref Owner
+        - Key: 'Project'
+          Value: !Ref Project
+        - Key: 'Product'
+          Value: 'API'
+
+# ----------------------------------------------------------------------------------------------
+
+Outputs:
+  LambdaFunctionConsoleUrl:
+    Description: Console URL for the Lambda Function.
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/functions/${LambdaFunction}'
+
+  ApiGatewayConsoleUrl:
+    Description: Console URL for the API Gateway API's resources.
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/apigateway/home?region=${AWS::Region}#/apis/${ApiGateway}/resources'
+
+  ApiUrl:
+    Description: Invoke URL for your API. Clicking this link will perform a GET request
+      on the root resource of your API.
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiStageName}/${ApiServiceVersion}/${ApiHealthCheckPath}'
+
+  AccessLogGroupName:
+    Description: get LogGroupName for access logs
+    Value: !Sub 'API-Gateway-Access-Logs_${ApiGateway}/${ApiStageName}'
+    Export:
+      Name: !Sub "${AWS::StackName}-AccessLogGroupName"
+
+  ExecutionLogGroupName:
+    Description: get LogGroupName for execution logs
+    Value: !Sub 'API-Gateway-Execution-Logs_${ApiGateway}/${ApiStageName}'
+    Export:
+      Name: !Sub "${AWS::StackName}-ExecutionLogGroupName"
+
+  TargetDomainName:
+    Value: !Ref TargetDomainName
+
+  CustomDomainName:
+    Value: !Ref ApiCustomDomainName
