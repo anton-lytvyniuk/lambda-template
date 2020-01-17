@@ -12,7 +12,7 @@ module.exports = () => {
   app.disable('x-powered-by');
 
   return app
-    .use(express.bodyParser())
+    .use(express.json())
     .use(aseMiddleware.eventContext())
     .use(loggingMidleware({ loggingRequest: true }))
     .get('/v1/httpbin', httpbinController.get)
