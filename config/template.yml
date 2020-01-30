@@ -33,7 +33,6 @@ Parameters:
   ApiStageName:
     Description: The stage name of API Gateway
     Type: String
-    ConstraintDescription: Only stages dev/*, preprod, prod are allowed
   ApiServiceVersion:
     Description: The version of API Service
     Type: String
@@ -52,19 +51,6 @@ Parameters:
     Type: String
     ConstraintDescription: Must be valid Certificate Arn-name for particular region
 
-  # CI/CD related parameters
-  ServiceArtifactGitCommitSHA:
-    Description: SHA of the git commit for the particular artifact
-    Type: String
-
-  # Resource tag parameters
-  Owner:
-    Description: The email or DL address of the resources owner
-    Type: String
-  Project:
-    Description: The project the resource supports
-    Type: String
-    ConstraintDescription: Must be valid JIRA keyspace
 
 # Condition to check if R53 Health-check have to be created
 Conditions:
@@ -104,15 +90,35 @@ Resources:
       MemorySize: !Ref LambdaMemorySize
       Timeout: !Ref LambdaTimeout
       Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          SSM_KEY: !Sub /${ServiceName}/${ApiServiceVersion}/${ApiStageName}
+      Tags:
+        Name: !Sub /${ServiceName}_${ApiServiceVersion}_${ApiStageName}
+        Service: Service
+        Environment: !If [MultiDev, "dev", !Sub "${ApiStageName}"]
+        Product: Product
+        AWS.Resource: Lambda
+      
+  # Creation of SSM Parameters with Lambda Configuration
+  Configs:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ServiceName}/${ApiServiceVersion}/${ApiStageName}
+      Type: String
+      Value: !Sub 
+        - |
+          {
+          }
+      Description: SSM Parameter for Service
       Tags:
         Name: !Sub ${ServiceName}_${ApiServiceVersion}_${ApiStageName}
-        Service: Application
+        Service: Service
         Environment: !If [MultiDev, "dev", !Sub "${ApiStageName}"]
-        Owner: !Ref Owner
-        Project: !Ref Project
-        Product: API
-        AWS.Resource: Lambda
-
+        Product: Product
+        AWS.Resource: SSM Parameter
+  
   # Creation of Lambda Execution Role to grant appropriate permissions to Lambda function
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -126,17 +132,40 @@ Resources:
           Action: sts:AssumeRole
       Path: "/"
       ManagedPolicyArns:
-      - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
-      - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole'
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       Policies:
-      - PolicyName: api-secrete-access
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Resource:
-              !If [MultiDev, !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/dev/${ServiceName}/${ApiServiceVersion}-??????", !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/${ApiStageName}/${ServiceName}/${ApiServiceVersion}-??????"]
-            Effect: Allow
-            Action: secretsmanager:GetSecretValue
+        - PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow #allow lambda to read from the event stream
+                Action:
+                  - ssm:GetParameter
+                Resource: "*"
+
+  # Adding permission for API Gateway to write logs to the CloudWatch
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchLogsRole.Arn
+
+  ApiGatewayCloudWatchLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          -
+            Action:
+              - "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service:
+              - "apigateway.amazonaws.com"
+        Version: '2012-10-17'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
 
   # Creation of Lambda Execution Permission to allow API Gateway to call Lambda function
   LambdaExecutionPermission:
@@ -168,7 +197,7 @@ Resources:
       LogGroupName: !Sub API-Gateway-Access-Logs_${ApiGateway}/${ApiStageName}
       RetentionInDays: 7
 
-  # Creation of Route53 Record
+# Creation of Route53 Record
   Route53RecordSet:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -238,21 +267,16 @@ Outputs:
   ApiUrl:
     Description: Invoke URL for your API. Clicking this link will perform a GET request
       on the root resource of your API.
-    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiStageName}/${ApiServiceVersion}/${ApiHealthCheckPath}'
-
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiStageName}/${ApiServiceVersion}/'
+    
   AccessLogGroupName:
     Description: get LogGroupName for access logs
     Value: !Sub 'API-Gateway-Access-Logs_${ApiGateway}/${ApiStageName}'
-    Export:
-      Name: !Sub "${AWS::StackName}-AccessLogGroupName"
 
   ExecutionLogGroupName:
     Description: get LogGroupName for execution logs
     Value: !Sub 'API-Gateway-Execution-Logs_${ApiGateway}/${ApiStageName}'
-    Export:
-      Name: !Sub "${AWS::StackName}-ExecutionLogGroupName"
-
-  TargetDomainName:
+    TargetDomainName:
     Value: !Ref TargetDomainName
 
   CustomDomainName:
