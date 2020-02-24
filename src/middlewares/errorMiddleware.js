@@ -6,7 +6,7 @@ const { INTERNAL_SERVER_ERROR, getStatusText } = require('http-status-codes');
  * It will be skipped if we remove it. next
  */
 // eslint-disable-next-line no-unused-vars
-const errorHandler = (err, req, res, next) => {
+const errorMiddleware = (err, req, res, next) => {
   const {
     statusCode = INTERNAL_SERVER_ERROR,
     message,
@@ -25,4 +25,4 @@ const errorHandler = (err, req, res, next) => {
   res.status(statusCode).json(response);
 };
 
-module.exports = errorHandler;
+module.exports = errorMiddleware;

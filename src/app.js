@@ -3,8 +3,8 @@ const express = require('express');
 const aseMiddleware = require('aws-serverless-express/middleware');
 
 const httpbinController = require('./controllers/httpbin');
-const errorHandler = require('./midelwares/errorHandler');
-const loggingMidleware = require('./midelwares/logging');
+const errorMiddleware = require('./middlewares/errorMiddleware');
+const loggingMiddleware = require('./middlewares/loggingMiddleware');
 
 module.exports = () => {
   const app = express();
@@ -14,7 +14,7 @@ module.exports = () => {
   return app
     .use(express.json())
     .use(aseMiddleware.eventContext())
-    .use(loggingMidleware({ loggingRequest: true }))
+    .use(loggingMiddleware({ loggingRequest: true }))
     .get('/v1/httpbin', httpbinController.get)
-    .use(errorHandler);
+    .use(errorMiddleware);
 };
