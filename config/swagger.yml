@@ -33,8 +33,11 @@ paths:
           description: Method Not Allowed
           schema:
             $ref: '#/definitions/ErrorDetailsModel'
-      x-amazon-apigateway-integration:
+      x-amazon-apigateway-integration:responses:
+          default:
+            statusCode: 200
         httpMethod: POST
+        passthroughBehavior: when_no_match
         type: aws_proxy
         uri:
           Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
