@@ -1,13 +1,14 @@
-const safeStringify = require('fast-safe-stringify');
-const { v4: randomUuid } = require('uuid');
+// eslint-disable-next-line import/no-unresolved
+import safeStringify from 'fast-safe-stringify';
+import { v4 as randomUuid } from 'uuid';
 
-const logger = require('../utils/logger');
-const obfuscate = require('../utils/obfuscator');
+import logger from '../utils/logger';
+import obfuscate from '../utils/obfuscator';
 
 const CORRELATION_ID_HEADER_NAME = 'correlation-id';
 const HEADERS_TO_OBFUSCATE = ['authorization'];
 
-module.exports = (params) => {
+export default (params) => {
   const {
     handleFinishRequest,
     loggingRequest,
@@ -27,6 +28,7 @@ module.exports = (params) => {
       query,
       apiGateway: {
         event: {
+          path,
           requestContext: {
             requestId,
           } = {},
@@ -41,20 +43,15 @@ module.exports = (params) => {
 
     res.append(CORRELATION_ID_HEADER_NAME, correlationId);
 
-    req.app.logger = (...args) => {
-      const obj = {
-        awsRequestId,
-        correlation_id: correlationId,
-        id,
-        method,
-        originalUrl,
-        path_with_params:
+    req.app.logger = logger.extend({
+      awsRequestId,
+      correlation_id: correlationId,
+      id,
+      method,
+      originalUrl,
+      path,
       requestId,
-      };
-
-      args.forEach((arg, ind) => { obj[`log${ind || ''}`] = arg; });
-      logger.info(safeStringify(obj));
-    };
+    });
 
     if (handleFinishRequest) {
       res.on('finish', () => handleFinishRequest(req));
@@ -64,6 +61,7 @@ module.exports = (params) => {
       logger.info(safeStringify({
         body: body ? safeStringify(obfuscate(body, bodyToObfuscate)) : null,
         headers: safeStringify(obfuscate(headers, headersToObfuscate || HEADERS_TO_OBFUSCATE)),
+        path: req.path || req.apiGateway.event.path,
         query: query ? safeStringify(obfuscate(query, queryToObfuscate)) : null,
       }));
     }

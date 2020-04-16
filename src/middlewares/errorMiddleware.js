@@ -1,28 +1,42 @@
-const { INTERNAL_SERVER_ERROR, getStatusText } = require('http-status-codes');
+import { ValidationError } from 'express-validation';
+import { getStatusText, INTERNAL_SERVER_ERROR } from 'http-status-codes';
+
+import logger from '../utils/logger';
+
+function getMessageFromValidationError(err) {
+  return Object.values(err.details[0])[0];
+}
 
 /**
  * Next is mandatory here because express treat it as an error handler.
  *
  * It will be skipped if we remove it. next
  */
-// eslint-disable-next-line no-unused-vars
-const errorMiddleware = (err, req, res, next) => {
-  const {
-    statusCode = INTERNAL_SERVER_ERROR,
-    message,
-    localisationCode,
-    validationErrors,
-  } = err;
+// eslint-disable-next-line
+export default (err, req, res, next) => {
+  (req.app.logger || logger).error(err);
 
-  const response = {
-    http_status: statusCode,
-    message: message || getStatusText(statusCode),
-    localisation_code: localisationCode ? String(localisationCode) : undefined,
-    validation_errors: validationErrors,
-    correlation_id: req.app.logger.getConfig().defaultLog.correlation_id,
-  };
+  if (err instanceof ValidationError) {
+    res.status(err.statusCode).json({
+      http_status: err.statusCode,
+      message: getMessageFromValidationError(err) || getStatusText(err.statusCode),
+      validation_errors: true,
+    });
+  } else {
+    const {
+      statusCode = INTERNAL_SERVER_ERROR,
+      message,
+      localisationCode,
+      validationErrors,
+    } = err;
 
-  res.status(statusCode).json(response);
+    const response = {
+      http_status: statusCode,
+      localisation_code: localisationCode ? String(localisationCode) : undefined,
+      message: message || getStatusText(statusCode),
+      validation_errors: validationErrors,
+    };
+
+    res.status(statusCode).json(response);
+  }
 };
-
-module.exports = errorMiddleware;
