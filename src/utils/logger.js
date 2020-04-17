@@ -22,7 +22,7 @@ export function createLogger(meta = {}, initialLoger = console) {
     info: prepareLog(loggerMeta, initialLoger.info),
     warn: prepareLog(loggerMeta, initialLoger.warn),
     extend(extendedMeta) {
-      return createLogger({ ...loggerMeta, extendedMeta }, initialLoger);
+      return createLogger({ ...loggerMeta, ...extendedMeta }, initialLoger);
     },
   };
 }
