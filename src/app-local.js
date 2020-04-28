@@ -8,5 +8,5 @@ Promise
   .then((app) => app
     .listen(port, (err) => (err
       ? logger.error(err)
-      : logger.log(`listening on ${port}`))))
+      : logger.info(`listening on ${port}`))))
   .catch(logger.error);
