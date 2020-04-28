@@ -1,14 +1,14 @@
 // eslint-disable-next-line import/no-unresolved
-import safeStringify from 'fast-safe-stringify';
-import { v4 as randomUuid } from 'uuid';
+const safeStringify = require('fast-safe-stringify');
+const { v4: randomUuid } = require('uuid');
 
-import logger from '../utils/logger';
-import obfuscate from '../utils/obfuscator';
+const { logger } = require('../utils/logger');
+const obfuscate = require('../utils/obfuscator');
 
 const CORRELATION_ID_HEADER_NAME = 'correlation-id';
 const HEADERS_TO_OBFUSCATE = ['authorization'];
 
-export default (params) => {
+module.exports = (params) => {
   const {
     handleFinishRequest,
     loggingRequest,

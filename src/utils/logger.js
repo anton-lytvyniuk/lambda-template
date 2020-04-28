@@ -13,7 +13,7 @@ function prepareLog(meta, output) {
   };
 }
 
-export function createLogger(meta = {}, initialLoger = console) {
+function createLogger(meta = {}, initialLoger = console) {
   const loggerMeta = { ...meta };
 
   return {
@@ -27,4 +27,5 @@ export function createLogger(meta = {}, initialLoger = console) {
   };
 }
 
-export default createLogger();
+exports.logger = createLogger();
+exports.createLogger = createLogger;
